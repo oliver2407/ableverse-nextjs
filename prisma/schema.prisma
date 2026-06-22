@@ -1,0 +1,79 @@
+// Ableverse – Prisma schema (Prisma 7)
+// Connection URL is configured in prisma.config.ts (not here)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  reviews   Review[]
+}
+
+model Venue {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  address     String?
+  city        String   @default("Ho Chi Minh City")
+  country     String   @default("Vietnam")
+  lat         Float?
+  lng         Float?
+  imageUrl    String?
+  isOpen      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Aggregated accessibility scores (0–100)
+  scoreBlind    Int @default(0)
+  scoreHearing  Int @default(0)
+  scoreMobility Int @default(0)
+  scoreService  Int @default(0)
+  scoreFacility Int @default(0)
+
+  reviews Review[]
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  serviceRating  ServiceRating
+  facilityRating FacilityRating
+
+  // Disability-specific scores (optional, 0–100)
+  scoreBlind    Int?
+  scoreHearing  Int?
+  scoreMobility Int?
+
+  comment     String?
+  photoUrl    String?
+  photoAlt    String?
+  isAnonymous Boolean @default(false)
+}
+
+enum ServiceRating {
+  POOR
+  OKAY
+  GOOD
+}
+
+enum FacilityRating {
+  POOR
+  OKAY
+  GOOD
+}
