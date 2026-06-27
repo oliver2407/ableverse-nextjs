@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import VenueCard, { VenueData } from "@/components/VenueCard";
-import ReviewModal from "@/components/ReviewModal";
-import DetailModal from "@/components/DetailModal";
+
+const ReviewModal = dynamic(() => import("@/components/ReviewModal"), { ssr: false });
+const DetailModal = dynamic(() => import("@/components/DetailModal"), { ssr: false });
 
 const PAGE_SIZE = 6;
 
@@ -27,20 +29,39 @@ export default function HomePage() {
   const [reviewTarget, setReviewTarget]   = useState<{ id: string; title: string } | null>(null);
   const [detailVenue, setDetailVenue]     = useState<VenueData | null>(null);
 
-  // Search / filter state
+  // Search / filter / sort state
   const [searchQuery, setSearchQuery]       = useState("");
+  const [appliedSearch, setAppliedSearch]   = useState("");
   const [filterCategory, setFilterCategory] = useState("");
   const [filterDistance, setFilterDistance] = useState("");
+  const [sortBy, setSortBy]                 = useState("overall");
+  const [sortDir, setSortDir]               = useState<"desc" | "asc">("desc");
   const [userLat, setUserLat]               = useState<number | null>(null);
   const [userLng, setUserLng]               = useState<number | null>(null);
   const [geoError, setGeoError]             = useState("");
 
-  useEffect(() => {
-    fetch("/api/venues")
+  const fetchVenues = useCallback((search: string, category: string) => {
+    setVenuesLoading(true);
+    const params = new URLSearchParams();
+    if (search)   params.set("search", search);
+    if (category) params.set("category", category);
+    const url = `/api/venues${params.size > 0 ? `?${params}` : ""}`;
+    fetch(url)
       .then((r) => r.json())
-      .then((data) => { setVenues(Array.isArray(data) ? data : []); setVenuesLoading(false); })
+      .then((data) => {
+        if (!Array.isArray(data)) return;
+        setVenues(data);
+        setVenuesLoading(false);
+        setDetailVenue((prev) => prev ? (data.find((v: VenueData) => v.id === prev.id) ?? prev) : null);
+      })
       .catch(() => setVenuesLoading(false));
   }, []);
+
+  const refreshVenues = useCallback(() => {
+    fetchVenues(appliedSearch, filterCategory);
+  }, [fetchVenues, appliedSearch, filterCategory]);
+
+  useEffect(() => { fetchVenues("", ""); }, [fetchVenues]);
 
   useEffect(() => {
     if (!filterDistance || userLat !== null) return;
@@ -51,21 +72,23 @@ export default function HomePage() {
     );
   }, [filterDistance, userLat]);
 
-  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, filterCategory, filterDistance]);
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [venues, filterDistance, sortBy, sortDir]);
+
+  function getScore(v: VenueData, key: string): number {
+    switch (key) {
+      case "overall":  return v.totalRatings === 0 ? -1 : (v.entrancePct + v.walkwayPct + v.restroomPct + v.seatingPct + v.parkingPct) / 5;
+      case "service":  return v.avgServicePct ?? -1;
+      case "entrance": return v.totalRatings === 0 ? -1 : v.entrancePct;
+      case "walkway":  return v.totalRatings === 0 ? -1 : v.walkwayPct;
+      case "restroom": return v.totalRatings === 0 ? -1 : v.restroomPct;
+      case "seating":  return v.totalRatings === 0 ? -1 : v.seatingPct;
+      case "parking":  return v.totalRatings === 0 ? -1 : v.parkingPct;
+      default:         return -1;
+    }
+  }
 
   const filteredVenues = useMemo(() => {
     let list = venues;
-
-    const q = searchQuery.trim().toLowerCase();
-    if (q) {
-      list = list.filter(
-        (v) => v.title.toLowerCase().includes(q) || v.address.toLowerCase().includes(q)
-      );
-    }
-
-    if (filterCategory) {
-      list = list.filter((v) => v.category === filterCategory);
-    }
 
     const maxKm = filterDistance ? parseInt(filterDistance) : null;
     if (maxKm && userLat !== null && userLng !== null) {
@@ -75,8 +98,14 @@ export default function HomePage() {
       });
     }
 
+    list = [...list].sort((a, b) => {
+      const diff = getScore(b, sortBy) - getScore(a, sortBy);
+      return sortDir === "asc" ? -diff : diff;
+    });
+
     return list;
-  }, [venues, searchQuery, filterCategory, filterDistance, userLat, userLng]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [venues, filterDistance, sortBy, sortDir, userLat, userLng]);
 
   const displayVenues = useMemo(() => {
     if (userLat === null || userLng === null) return filteredVenues;
@@ -105,8 +134,10 @@ export default function HomePage() {
     rec.onresult = (e: any) => {
       const t: string = e.results[0][0].transcript;
       setSearchQuery(t);
+      setAppliedSearch(t);
+      fetchVenues(t, filterCategory);
       const live = document.getElementById("sr-live");
-      if (live) live.textContent = `Search set to: ${t}`;
+      if (live) live.textContent = `Searching for: ${t}`;
     };
     rec.start();
     const live = document.getElementById("sr-live");
@@ -115,11 +146,11 @@ export default function HomePage() {
 
   const handleSearch = (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const q = searchQuery.trim();
+    setAppliedSearch(q);
+    fetchVenues(q, filterCategory);
     const live = document.getElementById("sr-live");
-    if (live) {
-      const n = filteredVenues.length;
-      live.textContent = n === 0 ? "No locations match." : `${n} location${n !== 1 ? "s" : ""} found.`;
-    }
+    if (live) live.textContent = q ? `Searching for "${q}"…` : "Loading all venues…";
   };
 
   return (
@@ -128,57 +159,99 @@ export default function HomePage() {
         <div className="container hero">
           <h1 className="hero__title">Ableverse – Accessibility Rankings</h1>
           <p className="hero__subtitle">
-            Crowdsourced wheelchair &amp; disability accessibility ratings for cafes and restaurants in District 7, Ho Chi Minh City.
+            Crowdsourced wheelchair &amp; disability accessibility ratings for cafes and restaurants in Ho Chi Minh City.
           </p>
 
           <form id="hero-search" className="hero__form" role="search" aria-label="Search for locations" onSubmit={handleSearch}>
+            <svg className="hero__search-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
             <label className="sr-only" htmlFor="search-input">Search</label>
-            <div className="input-group">
-              <input
-                className="input"
-                type="text"
-                id="search-input"
-                placeholder="Search by name or address…"
-                aria-label="Search venues"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              <button type="button" className="btn--voice" aria-label="Activate voice search" onClick={handleVoiceSearch}>🎤</button>
-            </div>
-
-            <label className="sr-only" htmlFor="filter-category">Category</label>
-            <select
-              id="filter-category"
-              aria-label="Filter by category"
-              value={filterCategory}
-              onChange={(e) => setFilterCategory(e.target.value)}
-            >
-              <option value="">All categories</option>
-              <option value="cafe">Cafe</option>
-              <option value="restaurant">Restaurant</option>
-            </select>
-
-            <label className="sr-only" htmlFor="filter-distance">Distance</label>
-            <select
-              id="filter-distance"
-              aria-label="Filter by distance"
-              value={filterDistance}
-              onChange={(e) => setFilterDistance(e.target.value)}
-            >
-              <option value="">Any distance</option>
-              <option value="1">Within 1 km</option>
-              <option value="2">Within 2 km</option>
-              <option value="5">Within 5 km</option>
-            </select>
-
-            <button type="submit" className="btn btn--primary" aria-label="Search">Search</button>
+            <input
+              className="hero__search-input"
+              type="text"
+              id="search-input"
+              placeholder="Search venues by name or address…"
+              aria-label="Search venues"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <button type="button" className="btn--voice" aria-label="Activate voice search" onClick={handleVoiceSearch}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="23"/>
+                <line x1="8" y1="23" x2="16" y2="23"/>
+              </svg>
+            </button>
+            <button type="submit" className="btn hero__search-btn" aria-label="Search">Search</button>
           </form>
-
-          {geoError && (
-            <p role="alert" style={{ color: "var(--color-warning)", fontSize: "0.85rem", marginTop: "0.5rem" }}>{geoError}</p>
-          )}
         </div>
       </header>
+
+      {/* Sticky filter bar */}
+      <div className="filter-bar" role="search" aria-label="Filter venues">
+        <div className="container filter-bar__inner">
+          <label className="sr-only" htmlFor="filter-category">Category</label>
+          <select
+            id="filter-category"
+            aria-label="Filter by category"
+            value={filterCategory}
+            onChange={(e) => { setFilterCategory(e.target.value); fetchVenues(appliedSearch, e.target.value); }}
+          >
+            <option value="">All categories</option>
+            <option value="cafe">Cafe</option>
+            <option value="restaurant">Restaurant</option>
+          </select>
+
+          <label className="sr-only" htmlFor="filter-distance">Distance</label>
+          <select
+            id="filter-distance"
+            aria-label="Filter by distance"
+            value={filterDistance}
+            onChange={(e) => setFilterDistance(e.target.value)}
+          >
+            <option value="">Any distance</option>
+            <option value="1">Within 1 km</option>
+            <option value="2">Within 2 km</option>
+            <option value="5">Within 5 km</option>
+          </select>
+
+          <label className="sr-only" htmlFor="sort-by">Sort by</label>
+          <select
+            id="sort-by"
+            aria-label="Sort by"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+          >
+            <option value="overall">Overall accessibility</option>
+            <option value="service">Service rating</option>
+            <option value="entrance">Step-free entrance</option>
+            <option value="walkway">Walkway &amp; door width</option>
+            <option value="restroom">Accessible restroom</option>
+            <option value="seating">Accessible seating</option>
+            <option value="parking">Accessible parking</option>
+          </select>
+
+          <button
+            type="button"
+            className="btn btn--ghost sort-dir-btn"
+            aria-label={sortDir === "desc" ? "Currently highest first — click for lowest first" : "Currently lowest first — click for highest first"}
+            title={sortDir === "desc" ? "Highest first" : "Lowest first"}
+            onClick={() => setSortDir((d) => d === "desc" ? "asc" : "desc")}
+          >
+            {sortDir === "desc" ? "↓ High–Low" : "↑ Low–High"}
+          </button>
+
+          {geoError && (
+            <p role="alert" style={{ color: "var(--color-warning)", fontSize: "0.82rem", margin: 0 }}>{geoError}</p>
+          )}
+
+          <span className="filter-bar__count">
+            {venuesLoading ? "" : `${filteredVenues.length} venue${filteredVenues.length !== 1 ? "s" : ""}`}
+          </span>
+        </div>
+      </div>
 
       <main className="container">
         <section id="results" className="results" role="region" aria-label="Venue results">
@@ -213,10 +286,10 @@ export default function HomePage() {
       </main>
 
       {reviewTarget && (
-        <ReviewModal venueId={reviewTarget.id} place={reviewTarget.title} onClose={() => setReviewTarget(null)} />
+        <ReviewModal venueId={reviewTarget.id} place={reviewTarget.title} onClose={() => setReviewTarget(null)} onSaved={() => { setReviewTarget(null); refreshVenues(); }} />
       )}
       {detailVenue && (
-        <DetailModal venue={detailVenue} onClose={() => setDetailVenue(null)} />
+        <DetailModal venue={detailVenue} onClose={() => setDetailVenue(null)} onRatingChanged={refreshVenues} />
       )}
     </>
   );

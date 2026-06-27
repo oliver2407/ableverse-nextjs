@@ -33,6 +33,8 @@ model Profile {
   phone          String?
   disabilityType String?  @map("disability_type")
   role           String   @default("community") // 'team' | 'community'
+  isAdmin        Boolean  @default(false) @map("is_admin")
+  isBanned       Boolean  @default(false) @map("is_banned")
   createdAt      DateTime @default(now()) @map("created_at")
 
   ratings AccessibilityRating[]
@@ -57,9 +59,11 @@ model AccessibilityRating {
   tableSeating       String   @map("table_seating") // open-underneath table available
   parking            String   // accessible parking near entrance
 
-  photoProofUrl      String?  @map("photo_proof_url") // optional, Supabase Storage
+  serviceRating      Int?     @map("service_rating")   // 1–5 stars (optional)
+  photoProofUrl      String?  @map("photo_proof_url")
   note               String?
   createdAt          DateTime @default(now()) @map("created_at")
 
+  @@unique([venueId, ratedBy])
   @@map("accessibility_ratings")
 }

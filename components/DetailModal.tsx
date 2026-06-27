@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase-browser";
 interface Props {
   venue: VenueData;
   onClose: () => void;
+  onRatingChanged?: () => void;
 }
 
 interface RatingItem {
@@ -21,6 +22,8 @@ interface RatingItem {
   tableSeating: string;
   parking: string;
   note: string | null;
+  serviceRating: number | null;
+  photoProofUrl: string | null;
   profile: { displayName: string | null; role: string } | null;
 }
 
@@ -44,7 +47,7 @@ function answerIcon(a: string) {
   return                   { icon: "?", color: "#8a6a00" };
 }
 
-export default function DetailModal({ venue, onClose }: Props) {
+export default function DetailModal({ venue, onClose, onRatingChanged }: Props) {
   const titleRef = useRef<HTMLHeadingElement>(null);
   const [ratings, setRatings]     = useState<RatingItem[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -96,7 +99,7 @@ export default function DetailModal({ venue, onClose }: Props) {
     setDeletingId(id);
     const res = await fetch(`/api/ratings?id=${id}`, { method: "DELETE" });
     setDeletingId(null);
-    if (res.ok) setRatings((prev) => prev.filter((r) => r.id !== id));
+    if (res.ok) { setRatings((prev) => prev.filter((r) => r.id !== id)); onRatingChanged?.(); }
   };
 
   const hasData = venue.totalRatings > 0;
@@ -159,57 +162,72 @@ export default function DetailModal({ venue, onClose }: Props) {
             ) : ratings.length === 0 ? (
               <p style={{ color: "var(--color-text-muted)" }}>No ratings yet. Be the first!</p>
             ) : (
-              <ul className="feedback-list">
+              <ul className="rating-card-list">
                 {ratings.map((r) => {
-                  const name = r.profile?.displayName ?? "Anonymous";
+                  const name   = r.profile?.displayName ?? "Anonymous";
                   const isTeam = r.raterType === "team";
-                  const isOwn = currentUserId === r.ratedBy;
+                  const isOwn  = currentUserId === r.ratedBy;
                   return (
-                    <li key={r.id}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
-                        <strong>{name}</strong>
-                        {isTeam && (
-                          <span style={{ fontSize: "0.75rem", background: "var(--color-primary)", color: "#fff", borderRadius: 999, padding: "1px 7px", fontWeight: 700 }}>
-                            Team
+                    <li key={r.id} className="rating-card">
+                      {/* Header row */}
+                      <div className="rating-card__header">
+                        <div className="rating-card__meta">
+                          <strong className="rating-card__name">{name}</strong>
+                          {isTeam && <span className="rating-card__team-badge" aria-label="Rated by team member">✓ Team</span>}
+                          <span className="rating-card__date">
+                            {new Date(r.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                           </span>
-                        )}
+                        </div>
                         {isOwn && (
-                          <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-                            <button
-                              type="button"
-                              className="btn btn--ghost"
-                              style={{ fontSize: "0.75rem", padding: "2px 10px" }}
-                              onClick={() => setEditRating(r)}
-                            >
+                          <div className="rating-card__actions">
+                            <button type="button" className="btn btn--ghost"
+                              style={{ fontSize: "0.75rem", padding: "2px 10px", minHeight: "unset" }}
+                              onClick={() => setEditRating(r)}>
                               Edit
                             </button>
-                            <button
-                              type="button"
-                              className="btn"
-                              style={{ fontSize: "0.75rem", padding: "2px 10px", color: "var(--color-danger)", borderColor: "var(--color-danger)" }}
+                            <button type="button" className="btn"
+                              style={{ fontSize: "0.75rem", padding: "2px 10px", minHeight: "unset", color: "var(--color-danger)", borderColor: "var(--color-danger)" }}
                               disabled={deletingId === r.id}
-                              onClick={() => handleDelete(r.id)}
-                            >
+                              onClick={() => handleDelete(r.id)}>
                               {deletingId === r.id ? "…" : "Delete"}
                             </button>
                           </div>
                         )}
                       </div>
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: "0.85rem" }}>
+
+                      {/* Checklist answers */}
+                      <div className="rating-card__answers">
                         {CHECKLIST_LABELS.map(({ label, detailKey }) => {
                           const val = r[detailKey] as string;
                           const { icon, color } = answerIcon(val);
                           return (
-                            <span key={detailKey} style={{ color }}>
+                            <span key={detailKey} className="rating-card__answer" style={{ color }}>
                               {icon} {label}
                             </span>
                           );
                         })}
                       </div>
+
+                      {/* Service rating */}
+                      {r.serviceRating && (
+                        <div style={{ fontSize: "0.85rem" }}>
+                          <span style={{ color: "var(--color-text-muted)", marginRight: 4 }}>Service:</span>
+                          {"★".repeat(r.serviceRating)}{"☆".repeat(5 - r.serviceRating)}
+                        </div>
+                      )}
+
+                      {/* Note */}
                       {r.note && (
-                        <p style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>
-                          &ldquo;{r.note}&rdquo;
-                        </p>
+                        <p className="rating-card__note">&ldquo;{r.note}&rdquo;</p>
+                      )}
+
+                      {/* Photo */}
+                      {r.photoProofUrl && (
+                        <a href={r.photoProofUrl} target="_blank" rel="noopener noreferrer"
+                          className="rating-card__photo-link">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={r.photoProofUrl} alt="Photo proof" className="rating-card__photo" />
+                        </a>
                       )}
                     </li>
                   );
@@ -238,7 +256,7 @@ export default function DetailModal({ venue, onClose }: Props) {
           venueId={venue.id}
           place={venue.title}
           onClose={() => setEditRating(null)}
-          onSaved={() => { setEditRating(null); setLoading(true); loadRatings(); }}
+          onSaved={() => { setEditRating(null); setLoading(true); loadRatings(); onRatingChanged?.(); }}
           editRating={{
             id:      editRating.id,
             answers: {
@@ -248,7 +266,9 @@ export default function DetailModal({ venue, onClose }: Props) {
               tableSeating:       editRating.tableSeating,
               parking:            editRating.parking,
             },
-            note: editRating.note ?? "",
+            note:          editRating.note ?? "",
+            serviceRating: editRating.serviceRating,
+            photoProofUrl: editRating.photoProofUrl,
           }}
         />
       )}

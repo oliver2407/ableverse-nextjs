@@ -43,19 +43,13 @@ export default function SignInPage() {
     setLoading(false);
 
     if (error) {
-      if (error.message.toLowerCase().includes("email not confirmed")) {
-        setFormError("Your email hasn't been confirmed yet. If you just signed up, ask an admin to confirm your account, or disable email confirmation in Supabase.");
-      } else if (error.message.toLowerCase().includes("invalid login")) {
-        setFormError("Incorrect email or password.");
-      } else {
-        setFormError(error.message);
-      }
+      setFormError("Incorrect email or password.");
       return;
     }
 
     const profileRes = await fetch("/api/profile");
     const profile = await profileRes.json();
-    router.push(profile.role === "team" ? "/admin" : "/");
+    router.push(profile.isAdmin ? "/admin" : "/");
     router.refresh();
   };
 

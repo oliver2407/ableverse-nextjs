@@ -51,8 +51,8 @@ async function main() {
 
     await prisma.profile.upsert({
       where:  { id: data.user.id },
-      update: { role: "team", displayName: admin.username },
-      create: { id: data.user.id, displayName: admin.username, role: "team" },
+      update: { role: "team", isAdmin: true, displayName: admin.username },
+      create: { id: data.user.id, displayName: admin.username, role: "team", isAdmin: true },
     });
 
     console.log(`✓  uid=${data.user.id.slice(0, 8)}…`);

@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase-browser";
 import type { User } from "@supabase/supabase-js";
 
@@ -12,7 +11,6 @@ export default function Nav() {
   const [user, setUser]         = useState<User | null>(null);
   const [isAdmin, setIsAdmin]   = useState(false);
   const navRef = useRef<HTMLElement>(null);
-  const router = useRouter();
 
   useEffect(() => {
     const supabase = createClient();
@@ -22,7 +20,7 @@ export default function Nav() {
       if (data.user) {
         fetch("/api/profile")
           .then((r) => r.json())
-          .then((d) => setIsAdmin(d.role === "team"))
+          .then((d) => setIsAdmin(d.isAdmin === true))
           .catch(() => {});
       }
     });
@@ -73,13 +71,6 @@ export default function Nav() {
     announce("Reading page content");
   };
 
-  const handleSignOut = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/");
-    router.refresh();
-  };
-
   const announce = (msg: string) => {
     const el = document.getElementById("sr-live");
     if (el) el.textContent = msg;
@@ -103,27 +94,6 @@ export default function Nav() {
         <ul className={`nav__list${menuOpen ? " nav__list--open" : ""}`} id="nav-list">
           <li className="nav__item">
             <Link href="/">Home</Link>
-          </li>
-
-          <li className="nav__item nav__item--dropdown">
-            <a
-              href="#"
-              className="nav__link nav__link--dropdown"
-              id="consulting-toggle"
-              aria-haspopup="true"
-              aria-expanded="false"
-            >
-              Services
-              <span className="nav__arrow" aria-hidden="true">▾</span>
-            </a>
-            <ul className="nav__dropdown" role="menu" aria-labelledby="consulting-toggle">
-              <li role="none">
-                <Link role="menuitem" href="/services">Our Services</Link>
-              </li>
-              <li role="none">
-                <Link role="menuitem" href="/services/audit-request">Request Audit</Link>
-              </li>
-            </ul>
           </li>
 
           {user ? (

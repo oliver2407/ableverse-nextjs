@@ -19,9 +19,12 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { venueId, entrance, walkwayDoorWidth, accessibleRestroom, tableSeating, parking, photoProofUrl, note } = body;
+    const { venueId, entrance, walkwayDoorWidth, accessibleRestroom, tableSeating, parking, serviceRating, photoProofUrl, note } = body;
 
     if (!venueId) return NextResponse.json({ error: "venueId is required." }, { status: 400 });
+    if (note && note.trim().length > 500) {
+      return NextResponse.json({ error: "Note must be 500 characters or fewer." }, { status: 400 });
+    }
 
     for (const [field, val] of [
       ["entrance", entrance], ["walkwayDoorWidth", walkwayDoorWidth],
@@ -36,6 +39,11 @@ export async function POST(request: Request) {
     const venue = await prisma.venue.findUnique({ where: { id: venueId } });
     if (!venue) return NextResponse.json({ error: "Venue not found." }, { status: 404 });
 
+    const duplicate = await prisma.accessibilityRating.findFirst({ where: { venueId, ratedBy: user.id } });
+    if (duplicate) {
+      return NextResponse.json({ error: "You have already rated this venue. Edit your existing rating instead." }, { status: 409 });
+    }
+
     const displayName    = (user.user_metadata?.username as string | undefined)?.trim() || (user.user_metadata?.full_name as string | undefined)?.trim() || null;
     const phone          = (user.user_metadata?.phone as string | undefined)?.trim() || null;
     const disabilityType = (user.user_metadata?.disability_type as string | undefined) || null;
@@ -44,17 +52,24 @@ export async function POST(request: Request) {
       update: {},
       create: { id: user.id, displayName, phone, disabilityType, role: "community" },
     });
+    const prof = await prisma.profile.findUnique({
+      where:  { id: user.id },
+      select: { role: true },
+    });
+    const isTeam = prof?.role === "team";
 
     const rating = await prisma.accessibilityRating.create({
       data: {
         venueId,
         ratedBy:           user.id,
-        raterType:         "community",
+        raterType:         isTeam ? "team" : "community",
+        verified:          isTeam,
         entrance,
         walkwayDoorWidth,
         accessibleRestroom,
         tableSeating,
         parking,
+        serviceRating:     (serviceRating >= 1 && serviceRating <= 5) ? serviceRating : null,
         photoProofUrl:     photoProofUrl || null,
         note:              note?.trim() || null,
       },
@@ -64,7 +79,7 @@ export async function POST(request: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[POST /api/ratings]", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
   }
 }
 
@@ -86,7 +101,7 @@ export async function GET(request: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[GET /api/ratings]", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
   }
 }
 
@@ -110,7 +125,11 @@ export async function PATCH(request: Request) {
     }
 
     const body = await request.json();
-    const { entrance, walkwayDoorWidth, accessibleRestroom, tableSeating, parking, note } = body;
+    const { entrance, walkwayDoorWidth, accessibleRestroom, tableSeating, parking, serviceRating, photoProofUrl, note } = body;
+
+    if (note && note.trim().length > 500) {
+      return NextResponse.json({ error: "Note must be 500 characters or fewer." }, { status: 400 });
+    }
 
     for (const [field, val] of [
       ["entrance", entrance], ["walkwayDoorWidth", walkwayDoorWidth],
@@ -124,14 +143,19 @@ export async function PATCH(request: Request) {
 
     await prisma.accessibilityRating.update({
       where: { id },
-      data:  { entrance, walkwayDoorWidth, accessibleRestroom, tableSeating, parking, note: note?.trim() || null },
+      data:  {
+        entrance, walkwayDoorWidth, accessibleRestroom, tableSeating, parking,
+        serviceRating: (serviceRating >= 1 && serviceRating <= 5) ? serviceRating : existing.serviceRating,
+        photoProofUrl: photoProofUrl ?? existing.photoProofUrl,
+        note: note?.trim() || null,
+      },
     });
 
     return NextResponse.json({ success: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[PATCH /api/ratings]", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
   }
 }
 
@@ -159,6 +183,6 @@ export async function DELETE(request: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[DELETE /api/ratings]", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
   }
 }

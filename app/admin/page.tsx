@@ -74,8 +74,8 @@ export default function AdminPage() {
   if (!stats) return null;
 
   return (
-    <main id="main-content" className="admin-page">
-      <div className="container">
+    <div className="admin-page">
+      <div>
         <h1 className="admin-title">Admin Dashboard</h1>
 
         {/* Stat cards */}
@@ -159,6 +159,6 @@ export default function AdminPage() {
 
         </div>
       </div>
-    </main>
+    </div>
   );
 }

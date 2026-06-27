@@ -13,11 +13,13 @@ export interface VenueData {
   category: string;
   distance?: string;
   totalRatings: number;
-  entrancePct: number;
-  walkwayPct: number;
-  restroomPct: number;
-  seatingPct: number;
-  parkingPct: number;
+  entrancePct: number;  entranceNoPct: number;
+  walkwayPct: number;   walkwayNoPct: number;
+  restroomPct: number;  restroomNoPct: number;
+  seatingPct: number;   seatingNoPct: number;
+  parkingPct: number;   parkingNoPct: number;
+  avgServicePct: number | null;
+  hasTeamRating: boolean;
 }
 
 interface Props {
@@ -27,11 +29,11 @@ interface Props {
 }
 
 const CHECKLIST = [
-  { key: "entrancePct",  short: "Entrance" },
-  { key: "walkwayPct",   short: "Walkway"  },
-  { key: "restroomPct",  short: "Restroom" },
-  { key: "seatingPct",   short: "Seating"  },
-  { key: "parkingPct",   short: "Parking"  },
+  { yesKey: "entrancePct",  noKey: "entranceNoPct",  catKey: "entrance", label: "Entrance" },
+  { yesKey: "walkwayPct",   noKey: "walkwayNoPct",   catKey: "walkway",  label: "Walkway"  },
+  { yesKey: "restroomPct",  noKey: "restroomNoPct",  catKey: "restroom", label: "Restroom" },
+  { yesKey: "seatingPct",   noKey: "seatingNoPct",   catKey: "seating",  label: "Seating"  },
+  { yesKey: "parkingPct",   noKey: "parkingNoPct",   catKey: "parking",  label: "Parking"  },
 ] as const;
 
 function overallColor(pct: number) {
@@ -71,6 +73,11 @@ export default function VenueCard({ venue, onDetail, onReview }: Props) {
             {overall}%
           </span>
         )}
+        {venue.hasTeamRating && (
+          <span className="card__badge badge--team" aria-label="Team verified">
+            ✓ Team verified
+          </span>
+        )}
       </div>
 
       {/* Body */}
@@ -80,16 +87,34 @@ export default function VenueCard({ venue, onDetail, onReview }: Props) {
 
         {/* Checklist scores */}
         {hasData ? (
-          <div className="card__scores" aria-label="Accessibility checklist scores">
-            {CHECKLIST.map(({ key, short }) => (
-              <div key={key} className="score-chip" title={`${short}: ${venue[key]}% yes`}>
-                <span className="score-chip__label">{short[0]}</span>
-                <span className="score-chip__value">{venue[key]}%</span>
-              </div>
-            ))}
+          <div className="card__chips" aria-label="Accessibility scores">
+            {CHECKLIST.map(({ yesKey, label }) => {
+              const yes = venue[yesKey];
+              const cls = yes >= 75 ? "chip--green" : yes >= 45 ? "chip--amber" : "chip--red";
+              return (
+                <span key={yesKey} className={`card__chip ${cls}`}>
+                  {label} {yes}%
+                </span>
+              );
+            })}
           </div>
         ) : (
           <p className="card__no-data">No ratings yet — be the first!</p>
+        )}
+
+        {venue.avgServicePct !== null && (
+          <div
+            className="card__service-rating"
+            aria-label={`Average service rating ${venue.avgServicePct}%`}
+          >
+            <span className="card__service-label">Service</span>
+            <span className="card__service-stars" aria-hidden="true">
+              {Array.from({ length: 5 }, (_, i) => (
+                i < Math.round(venue.avgServicePct! / 20) ? "★" : "☆"
+              )).join("")}
+            </span>
+            <span className="card__service-pct">{Math.round(venue.avgServicePct! / 20)}/5</span>
+          </div>
         )}
 
         {venue.distance && (

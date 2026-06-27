@@ -67,16 +67,24 @@ async function main() {
 
   // 2. Create summary view (idempotent)
   console.log("Creating venue_accessibility_summary view…");
+  await prisma.$executeRaw`DROP VIEW IF EXISTS venue_accessibility_summary`;
   await prisma.$executeRaw`
-    CREATE OR REPLACE VIEW venue_accessibility_summary AS
+    CREATE VIEW venue_accessibility_summary AS
     SELECT
       venue_id,
-      count(*)::int                                                                              AS total_ratings,
-      round(100.0 * count(*) FILTER (WHERE entrance            = 'yes') / count(*))::int        AS entrance_pct,
-      round(100.0 * count(*) FILTER (WHERE walkway_door_width  = 'yes') / count(*))::int        AS walkway_pct,
-      round(100.0 * count(*) FILTER (WHERE accessible_restroom = 'yes') / count(*))::int        AS restroom_pct,
-      round(100.0 * count(*) FILTER (WHERE table_seating       = 'yes') / count(*))::int        AS seating_pct,
-      round(100.0 * count(*) FILTER (WHERE parking             = 'yes') / count(*))::int        AS parking_pct
+      count(*)::int AS total_ratings,
+      coalesce(round(100.0 * count(*) FILTER (WHERE entrance            = 'yes') / nullif(count(*) FILTER (WHERE entrance            IN ('yes','no')), 0))::int, 0) AS entrance_pct,
+      coalesce(round(100.0 * count(*) FILTER (WHERE entrance            = 'no')  / nullif(count(*) FILTER (WHERE entrance            IN ('yes','no')), 0))::int, 0) AS entrance_no_pct,
+      coalesce(round(100.0 * count(*) FILTER (WHERE walkway_door_width  = 'yes') / nullif(count(*) FILTER (WHERE walkway_door_width  IN ('yes','no')), 0))::int, 0) AS walkway_pct,
+      coalesce(round(100.0 * count(*) FILTER (WHERE walkway_door_width  = 'no')  / nullif(count(*) FILTER (WHERE walkway_door_width  IN ('yes','no')), 0))::int, 0) AS walkway_no_pct,
+      coalesce(round(100.0 * count(*) FILTER (WHERE accessible_restroom = 'yes') / nullif(count(*) FILTER (WHERE accessible_restroom IN ('yes','no')), 0))::int, 0) AS restroom_pct,
+      coalesce(round(100.0 * count(*) FILTER (WHERE accessible_restroom = 'no')  / nullif(count(*) FILTER (WHERE accessible_restroom IN ('yes','no')), 0))::int, 0) AS restroom_no_pct,
+      coalesce(round(100.0 * count(*) FILTER (WHERE table_seating       = 'yes') / nullif(count(*) FILTER (WHERE table_seating       IN ('yes','no')), 0))::int, 0) AS seating_pct,
+      coalesce(round(100.0 * count(*) FILTER (WHERE table_seating       = 'no')  / nullif(count(*) FILTER (WHERE table_seating       IN ('yes','no')), 0))::int, 0) AS seating_no_pct,
+      coalesce(round(100.0 * count(*) FILTER (WHERE parking             = 'yes') / nullif(count(*) FILTER (WHERE parking             IN ('yes','no')), 0))::int, 0) AS parking_pct,
+      coalesce(round(100.0 * count(*) FILTER (WHERE parking             = 'no')  / nullif(count(*) FILTER (WHERE parking             IN ('yes','no')), 0))::int, 0) AS parking_no_pct,
+      round(avg(service_rating) * 20)::int AS avg_service_pct,
+      bool_or(verified) AS has_team_rating
     FROM accessibility_ratings
     GROUP BY venue_id
   `;
