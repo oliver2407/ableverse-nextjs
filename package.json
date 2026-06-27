@@ -11,7 +11,8 @@
     "enrich": "tsx prisma/enrich-venues.ts",
     "fix-locations": "tsx prisma/fix-locations.ts",
     "create-admins": "tsx prisma/create-admins.ts",
-    "expand-venues": "node prisma/expand-venues.js"
+    "expand-venues": "node prisma/expand-venues.js",
+    "fix-photos": "node prisma/fix-photos.js"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
