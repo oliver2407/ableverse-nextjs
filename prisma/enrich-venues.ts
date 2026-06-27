@@ -66,7 +66,7 @@ function delay(ms: number) {
 async function main() {
   const venues = await prisma.venue.findMany({ orderBy: { name: "asc" } });
 
-  const toEnrich = venues.filter((v) => v.googlePlaceId.startsWith("place_"));
+  const toEnrich = venues.filter((v) => v.googlePlaceId.startsWith("place_") || v.photoUrl === null);
   console.log(`\nEnriching ${toEnrich.length} venues via Places API (New)…\n`);
 
   let updated = 0; let notFound = 0; let skipped = 0;

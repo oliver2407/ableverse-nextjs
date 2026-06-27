@@ -7,7 +7,7 @@ import VenueCard, { VenueData } from "@/components/VenueCard";
 const ReviewModal = dynamic(() => import("@/components/ReviewModal"), { ssr: false });
 const DetailModal = dynamic(() => import("@/components/DetailModal"), { ssr: false });
 
-const PAGE_SIZE = 6;
+const PAGE_SIZE = 12;
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371;
