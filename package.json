@@ -10,7 +10,8 @@
     "seed": "tsx prisma/seed.ts",
     "enrich": "tsx prisma/enrich-venues.ts",
     "fix-locations": "tsx prisma/fix-locations.ts",
-    "create-admins": "tsx prisma/create-admins.ts"
+    "create-admins": "tsx prisma/create-admins.ts",
+    "expand-venues": "node prisma/expand-venues.js"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -33,6 +34,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
+    "node-fetch": "^2.7.0",
     "tsx": "^4.22.4",
     "typescript": "^5"
   }
