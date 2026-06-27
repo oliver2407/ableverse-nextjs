@@ -34,8 +34,7 @@ export default function AccountPage() {
   const handleSignOut = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
-    router.push("/");
-    router.refresh();
+    window.location.href = "/";
   };
 
   const handleSave = async (e: React.SyntheticEvent<HTMLFormElement>) => {
