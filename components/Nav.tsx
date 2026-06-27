@@ -9,17 +9,27 @@ import type { User } from "@supabase/supabase-js";
 export default function Nav() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [contrast, setContrast] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser]         = useState<User | null>(null);
+  const [isAdmin, setIsAdmin]   = useState(false);
   const navRef = useRef<HTMLElement>(null);
   const router = useRouter();
 
   useEffect(() => {
     const supabase = createClient();
 
-    supabase.auth.getUser().then(({ data }) => setUser(data.user));
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user);
+      if (data.user) {
+        fetch("/api/profile")
+          .then((r) => r.json())
+          .then((d) => setIsAdmin(d.role === "team"))
+          .catch(() => {});
+      }
+    });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      if (!session?.user) setIsAdmin(false);
     });
 
     return () => subscription.unsubscribe();
@@ -121,6 +131,11 @@ export default function Nav() {
               <li className="nav__item">
                 <Link href="/account">My Account</Link>
               </li>
+              {isAdmin && (
+                <li className="nav__item">
+                  <Link href="/admin">Admin</Link>
+                </li>
+              )}
             </>
           ) : (
             <li className="nav__item">

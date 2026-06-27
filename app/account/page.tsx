@@ -8,8 +8,14 @@ import type { User } from "@supabase/supabase-js";
 
 export default function AccountPage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser]       = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const [editFullName, setEditFullName] = useState("");
+  const [editUsername, setEditUsername] = useState("");
+  const [saving, setSaving]             = useState(false);
+  const [saveError, setSaveError]       = useState("");
+  const [saveSuccess, setSaveSuccess]   = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
@@ -18,6 +24,8 @@ export default function AccountPage() {
         router.replace("/sign-in");
       } else {
         setUser(data.user);
+        setEditFullName(data.user.user_metadata?.full_name ?? "");
+        setEditUsername(data.user.user_metadata?.username ?? "");
         setLoading(false);
       }
     });
@@ -30,22 +38,58 @@ export default function AccountPage() {
     router.refresh();
   };
 
+  const handleSave = async (e: React.SyntheticEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setSaveError("");
+    setSaveSuccess(false);
+
+    const usernameRe = /^[a-zA-Z0-9_]{3,20}$/;
+    if (!usernameRe.test(editUsername)) {
+      setSaveError("Username must be 3–20 characters: letters, numbers, or _");
+      return;
+    }
+    if (editFullName.trim().length < 2) {
+      setSaveError("Full name must be at least 2 characters.");
+      return;
+    }
+
+    setSaving(true);
+    const supabase = createClient();
+    const { error } = await supabase.auth.updateUser({
+      data: { full_name: editFullName.trim(), username: editUsername.trim() },
+    });
+    setSaving(false);
+
+    if (error) { setSaveError(error.message); return; }
+
+    // Sync display_name in profiles table
+    await fetch("/api/profile", {
+      method:  "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ displayName: editUsername.trim() }),
+    });
+
+    setUser((prev) => prev ? {
+      ...prev,
+      user_metadata: { ...prev.user_metadata, full_name: editFullName.trim(), username: editUsername.trim() },
+    } : prev);
+    setSaveSuccess(true);
+  };
+
   if (loading) {
     return (
       <main className="account-page" id="main-content">
-        <div className="container">
-          <p>Loading…</p>
-        </div>
+        <div className="container"><p>Loading…</p></div>
       </main>
     );
   }
 
-  const email = user?.email ?? "";
-  const fullName = user?.user_metadata?.full_name as string | undefined;
-  const username = user?.user_metadata?.username as string | undefined;
-  const displayName = fullName || username || email.split("@")[0];
+  const email        = user?.email ?? "";
+  const fullName     = user?.user_metadata?.full_name as string | undefined;
+  const username     = user?.user_metadata?.username  as string | undefined;
+  const displayName  = username || fullName || email.split("@")[0];
   const avatarLetter = displayName.charAt(0).toUpperCase();
-  const memberSince = user?.created_at
+  const memberSince  = user?.created_at
     ? new Date(user.created_at).toLocaleDateString("en-US", { month: "long", year: "numeric" })
     : "—";
 
@@ -65,9 +109,7 @@ export default function AccountPage() {
 
           <aside className="account-sidebar" aria-label="Account menu">
             <div className="profile-summary">
-              <div className="profile-summary-avatar" aria-hidden="true">
-                {avatarLetter}
-              </div>
+              <div className="profile-summary-avatar" aria-hidden="true">{avatarLetter}</div>
               <h2>{displayName}</h2>
               {username && <p>@{username}</p>}
               <p>{email}</p>
@@ -87,37 +129,51 @@ export default function AccountPage() {
           <section className="account-content">
 
             <article className="account-card">
-              <div className="card-header">
-                <h2>Profile Information</h2>
-              </div>
-              <div className="info-grid">
-                {fullName && (
-                  <div className="info-item">
-                    <span className="label">Full Name</span>
-                    <p>{fullName}</p>
+              <div className="card-header"><h2>Profile Information</h2></div>
+
+              {saveError   && <p className="error-msg" role="alert">{saveError}</p>}
+              {saveSuccess && <p style={{ color: "var(--color-success)", fontWeight: 600, marginBottom: "0.75rem" }}>Profile updated.</p>}
+
+              <form onSubmit={handleSave} noValidate>
+                <div className="auth-form-fields auth-form-grid">
+
+                  <div className="form-group">
+                    <label htmlFor="edit-fullname">Full Name</label>
+                    <input type="text" id="edit-fullname" value={editFullName}
+                      onChange={(e) => setEditFullName(e.target.value)}
+                      placeholder="Your full name" autoComplete="name" />
                   </div>
-                )}
-                {username && (
-                  <div className="info-item">
-                    <span className="label">Username</span>
-                    <p>@{username}</p>
+
+                  <div className="form-group">
+                    <label htmlFor="edit-username">Username</label>
+                    <input type="text" id="edit-username" value={editUsername}
+                      onChange={(e) => setEditUsername(e.target.value)}
+                      placeholder="3–20 chars" autoComplete="username" />
                   </div>
-                )}
-                <div className="info-item">
-                  <span className="label">Email</span>
-                  <p>{email}</p>
+
+                  <div className="form-group auth-form-full">
+                    <label>Email</label>
+                    <input type="email" value={email} disabled
+                      style={{ opacity: 0.5, cursor: "not-allowed" }} />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Member Since</label>
+                    <input type="text" value={memberSince} disabled
+                      style={{ opacity: 0.5, cursor: "not-allowed" }} />
+                  </div>
+
                 </div>
-                <div className="info-item">
-                  <span className="label">Member Since</span>
-                  <p>{memberSince}</p>
-                </div>
-              </div>
+
+                <button type="submit" className="btn btn--primary" disabled={saving} aria-busy={saving}
+                  style={{ marginTop: "1rem" }}>
+                  {saving ? "Saving…" : "Save Changes"}
+                </button>
+              </form>
             </article>
 
             <article className="account-card">
-              <div className="card-header">
-                <h2>Password</h2>
-              </div>
+              <div className="card-header"><h2>Password</h2></div>
               <div className="settings-text">
                 <p>
                   Keep your account secure by updating your password regularly.{" "}

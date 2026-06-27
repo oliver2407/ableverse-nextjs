@@ -1,5 +1,5 @@
 // Ableverse – Prisma schema (Prisma 7)
-// Connection URL is configured in prisma.config.ts (not here)
+// MVP: crowdsourced accessibility ratings for District 7 / Sky Garden pilot
 
 generator client {
   provider = "prisma-client-js"
@@ -9,71 +9,57 @@ datasource db {
   provider = "postgresql"
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  reviews   Review[]
-}
-
+// Venues cached from Google Places API
 model Venue {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String   @unique
-  description String?
-  address     String?
-  city        String   @default("Ho Chi Minh City")
-  country     String   @default("Vietnam")
-  lat         Float?
-  lng         Float?
-  imageUrl    String?
-  isOpen      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(uuid())
+  googlePlaceId String   @unique @map("google_place_id")
+  name          String
+  address       String
+  lat           Float
+  lng           Float
+  photoUrl      String?  @map("photo_url")
+  category      String   @default("cafe")
+  createdAt     DateTime @default(now()) @map("created_at")
 
-  // Aggregated accessibility scores (0–100)
-  scoreBlind    Int @default(0)
-  scoreHearing  Int @default(0)
-  scoreMobility Int @default(0)
-  scoreService  Int @default(0)
-  scoreFacility Int @default(0)
+  ratings AccessibilityRating[]
 
-  reviews Review[]
+  @@map("venues")
 }
 
-model Review {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
+// Extends Supabase auth.users
+model Profile {
+  id             String   @id
+  displayName    String?  @map("display_name")
+  phone          String?
+  disabilityType String?  @map("disability_type")
+  role           String   @default("community") // 'team' | 'community'
+  createdAt      DateTime @default(now()) @map("created_at")
 
-  venueId String
-  venue   Venue  @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  ratings AccessibilityRating[]
 
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
-
-  serviceRating  ServiceRating
-  facilityRating FacilityRating
-
-  // Disability-specific scores (optional, 0–100)
-  scoreBlind    Int?
-  scoreHearing  Int?
-  scoreMobility Int?
-
-  comment     String?
-  photoUrl    String?
-  photoAlt    String?
-  isAnonymous Boolean @default(false)
+  @@map("profiles")
 }
 
-enum ServiceRating {
-  POOR
-  OKAY
-  GOOD
-}
+// One submission per user per venue (6-item checklist)
+// Values: 'yes' | 'no' | 'unsure'  (enforced via CHECK in seed SQL)
+model AccessibilityRating {
+  id                 String   @id @default(uuid())
+  venueId            String   @map("venue_id")
+  venue              Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  ratedBy            String   @map("rated_by")
+  profile            Profile  @relation(fields: [ratedBy], references: [id])
+  raterType          String   @default("community") @map("rater_type") // 'team' | 'community'
+  verified           Boolean  @default(false)
 
-enum FacilityRating {
-  POOR
-  OKAY
-  GOOD
+  entrance           String   // step-free entrance / ramp
+  walkwayDoorWidth   String   @map("walkway_door_width") // wheelchair can pass
+  accessibleRestroom String   @map("accessible_restroom")
+  tableSeating       String   @map("table_seating") // open-underneath table available
+  parking            String   // accessible parking near entrance
+
+  photoProofUrl      String?  @map("photo_proof_url") // optional, Supabase Storage
+  note               String?
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  @@map("accessibility_ratings")
 }

@@ -4,110 +4,119 @@ import Image from "next/image";
 
 export interface VenueData {
   id: string;
+  googlePlaceId: string;
   title: string;
-  image: string;
-  imageAlt: string;
-  isOpen: boolean;
-  description: string;
-  distance: string;
-  blind: number;
-  hearing: number;
-  mobility: number;
-  service: number;
-  facility: number;
+  address: string;
+  lat: number | null;
+  lng: number | null;
+  photoUrl: string | null;
+  category: string;
+  distance?: string;
+  totalRatings: number;
+  entrancePct: number;
+  walkwayPct: number;
+  restroomPct: number;
+  seatingPct: number;
+  parkingPct: number;
 }
 
 interface Props {
   venue: VenueData;
-  onDetail: (id: string, ratings: { blind: number; hearing: number; mobility: number }) => void;
-  onReview: (slug: string, title: string) => void;
+  onDetail: (venue: VenueData) => void;
+  onReview: (id: string, title: string) => void;
 }
 
-function ratingLabel(score: number): { label: string; colorClass: string } {
-  if (score >= 85) return { label: "Highly Recommended", colorClass: "rating_color1" };
-  if (score >= 65) return { label: "Recommended", colorClass: "rating_color2" };
-  if (score >= 50) return { label: "Okay", colorClass: "rating_color2" };
-  return { label: "Need Improvement", colorClass: "rating_color3" };
+const CHECKLIST = [
+  { key: "entrancePct",  short: "Entrance" },
+  { key: "walkwayPct",   short: "Walkway"  },
+  { key: "restroomPct",  short: "Restroom" },
+  { key: "seatingPct",   short: "Seating"  },
+  { key: "parkingPct",   short: "Parking"  },
+] as const;
+
+function overallColor(pct: number) {
+  if (pct >= 75) return "rating_color1";
+  if (pct >= 45) return "rating_color2";
+  return "rating_color3";
 }
 
 export default function VenueCard({ venue, onDetail, onReview }: Props) {
-  const overall = Math.round((venue.blind + venue.hearing + venue.mobility) / 3);
-  const { label, colorClass } = ratingLabel(overall);
+  const hasData = venue.totalRatings > 0;
+  const overall = hasData
+    ? Math.round(
+        (venue.entrancePct + venue.walkwayPct + venue.restroomPct + venue.seatingPct + venue.parkingPct) / 5
+      )
+    : null;
 
   return (
     <article
-      className="card card--shop"
+      className="card card--venue"
       aria-labelledby={`place-${venue.id}`}
-      data-blind={venue.blind}
-      data-hearing={venue.hearing}
-      data-mobility={venue.mobility}
-      data-service={venue.service}
-      data-facility={venue.facility}
     >
+      {/* Image */}
       <div className="card__media">
-        <Image
-          src={`/${venue.image}`}
-          alt={venue.imageAlt}
-          width={400}
-          height={280}
-          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-        />
+        {venue.photoUrl ? (
+          <Image
+            src={venue.photoUrl}
+            alt={`Photo of ${venue.title}`}
+            fill
+            sizes="(max-width: 560px) 100vw, (max-width: 900px) 50vw, 33vw"
+            style={{ objectFit: "cover" }}
+          />
+        ) : (
+          <div className="card__media-placeholder" aria-hidden="true">🏢</div>
+        )}
+        {overall !== null && (
+          <span className={`card__badge badge--overall ${overallColor(overall)}`} aria-label={`Overall accessibility ${overall}%`}>
+            {overall}%
+          </span>
+        )}
       </div>
 
-      <div className="card__body_out">
-        <div className="card__body">
-          <div className="text-card">
-            <h3 id={`place-${venue.id}`}>{venue.title}</h3>
-            <div className="card__status" aria-label="Availability status">
-              <span className={venue.isOpen ? "status-green status--open" : "status-red status--open"}>
-                {venue.isOpen ? "Open Now" : "Closed"}
-              </span>
-            </div>
-            <div className="card__description">
-              <p>{venue.description}</p>
-            </div>
-          </div>
-          <div className="card__actions">
-            <button
-              type="button"
-              className="btn btn--primary"
-              aria-label={`View details for ${venue.title}`}
-              onClick={() => onDetail(venue.id, { blind: venue.blind, hearing: venue.hearing, mobility: venue.mobility })}
-            >
-              View Details
-            </button>
-            <button
-              type="button"
-              className="btn btn--primary"
-              aria-label={`Submit review for ${venue.title}`}
-              onClick={() => onReview(venue.id, venue.title)}
-            >
-              Submit Review
-            </button>
-          </div>
-        </div>
+      {/* Body */}
+      <div className="card__body">
+        <h3 id={`place-${venue.id}`} className="card__title">{venue.title}</h3>
+        <p className="card__address">{venue.address}</p>
 
-        <div className="card__a11y sr-only">
-          <span aria-label={`Accessibility for blind ${venue.blind} percent`} />
-          <span aria-label={`Accessibility for hearing impairment ${venue.hearing} percent`} />
-          <span aria-label={`Accessibility for mobility impairment ${venue.mobility} percent`} />
-        </div>
+        {/* Checklist scores */}
+        {hasData ? (
+          <div className="card__scores" aria-label="Accessibility checklist scores">
+            {CHECKLIST.map(({ key, short }) => (
+              <div key={key} className="score-chip" title={`${short}: ${venue[key]}% yes`}>
+                <span className="score-chip__label">{short[0]}</span>
+                <span className="score-chip__value">{venue[key]}%</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="card__no-data">No ratings yet — be the first!</p>
+        )}
+
+        {venue.distance && (
+          <p className="card__distance">📍 {venue.distance}</p>
+        )}
       </div>
 
-      <aside className="card__meta" aria-label="Ratings">
-        <div className="card_meta_mini">
-          <div className="rating__overall">{label}</div>
-          <div
-            className={`rating__overall ${colorClass}`}
-            role="img"
-            aria-label={`Overall accessibility score ${overall} out of 100`}
-          >
-            <span className="rating__value">{overall}</span>
-            <span className="rating__suffix">/100</span>
-          </div>
-        </div>
-        <p className="distance">{venue.distance}</p>
-      </aside>
+      {/* Actions */}
+      <div className="card__actions">
+        <button
+          type="button"
+          className="btn btn--primary"
+          aria-label={`View details for ${venue.title}`}
+          onClick={() => onDetail(venue)}
+        >
+          Details
+        </button>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          aria-label={`Rate accessibility of ${venue.title}`}
+          onClick={() => onReview(venue.id, venue.title)}
+        >
+          Rate
+        </button>
+      </div>
+
     </article>
   );
 }

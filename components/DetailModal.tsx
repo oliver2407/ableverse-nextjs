@@ -1,92 +1,63 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-
-interface Ratings {
-  blind: number;
-  hearing: number;
-  mobility: number;
-}
-
-interface LocationData {
-  title: string;
-  description: string;
-  services: string[];
-  mapUrl: string;
-}
+import { useEffect, useRef, useState } from "react";
+import { VenueData } from "@/components/VenueCard";
+import ReviewModal from "@/components/ReviewModal";
+import { createClient } from "@/lib/supabase-browser";
 
 interface Props {
-  locationKey: string;
-  ratings: Ratings;
+  venue: VenueData;
   onClose: () => void;
 }
 
-const locationsData: Record<string, LocationData> = {
-  pho24: {
-    title: "Phở 24 Restaurant",
-    description: "Traditional phở restaurant chain. Fast service, modern ambiance, disability-friendly.",
-    services: ["Sign language support", "Guide dog area", "Disability-friendly delivery"],
-    mapUrl: "https://www.google.com/maps/dir/?api=1&destination=Ph%E1%BB%9F+24,+H%C3%A0+N%E1%BB%99i,+Vi%E1%BB%87t+Nam",
-  },
-  "tch-nguyenhue": {
-    title: "The Coffee House Signature",
-    description: "Flagship store with automatic sliding doors, elevator to all floors, braille & large-print menus, induction loop at counter.",
-    services: ["Elevator access", "Braille menus", "Induction hearing loop", "Accessible restrooms"],
-    mapUrl: "https://www.google.com/maps/dir/?api=1&destination=The+Coffee+House+Signature,+Ho+Chi+Minh+City",
-  },
-  "pho-hoa": {
-    title: "Phở Hòa Pasteur",
-    description: "Legendary phở restaurant with flat entrance, wide aisles, wheelchair-accessible toilet on ground floor, and very supportive staff.",
-    services: ["Wheelchair accessible toilet", "Flat entrance", "Wide aisles"],
-    mapUrl: "https://www.google.com/maps/dir/?api=1&destination=Pho+Hoa+Pasteur,+Ho+Chi+Minh+City",
-  },
-  "starbucks-reserve": {
-    title: "Starbucks Reserve Nhà Thờ Đức Bà",
-    description: "Global accessibility standard: automatic doors, braille signage, hearing loop, mobile order & pay, spacious layout, and accessible restroom.",
-    services: ["Automatic doors", "Braille signage", "Hearing loop", "Mobile ordering", "Accessible restroom"],
-    mapUrl: "https://www.google.com/maps/dir/?api=1&destination=Starbucks+Reserve+Nha+Tho,+Ho+Chi+Minh+City",
-  },
-  pizza4p: {
-    title: "Pizza 4P's Lê Thánh Tôn",
-    description: "Elevator to upper floors, spacious wheelchair turning space, high-contrast menu, staff trained in basic sign language.",
-    services: ["Elevator", "Wheelchair turning space", "High-contrast menu", "Sign language trained staff"],
-    mapUrl: "https://www.google.com/maps/dir/?api=1&destination=Pizza+4Ps+Le+Thanh+Ton,+Ho+Chi+Minh+City",
-  },
-  "banhmi-hh": {
-    title: "Bánh Mì Huỳnh Hoa",
-    description: "Iconic street stall – small step at entrance, very narrow interior, no accessible toilet.",
-    services: ["Takeaway available"],
-    mapUrl: "https://www.google.com/maps/dir/?api=1&destination=Banh+Mi+Huynh+Hoa,+Ho+Chi+Minh+City",
-  },
-  laude404: {
-    title: "Lẩu Dê 404 Phạm Văn Đồng",
-    description: "Ramp, large parking, wheelchair toilet, adjustable tables, visual fire alarm.",
-    services: ["Ramp access", "Wheelchair toilet", "Adjustable tables", "Visual fire alarm"],
-    mapUrl: "https://www.google.com/maps/dir/?api=1&destination=Lau+De+404,+Ho+Chi+Minh+City",
-  },
-  "cong-president": {
-    title: "Cộng Cà Phê President Place",
-    description: "Retro vibe, ramp access, large-print menu, quiet corner available.",
-    services: ["Ramp access", "Large-print menu", "Quiet seating area"],
-    mapUrl: "https://www.google.com/maps/dir/?api=1&destination=Cong+Cafe+President+Place,+Ho+Chi+Minh+City",
-  },
-  bunbo77: {
-    title: "Bún Bò Nam Bộ 77 Bùi Viện",
-    description: "Small step at entrance, narrow space, outdoor seating only – limited accessibility.",
-    services: ["Outdoor seating"],
-    mapUrl: "https://www.google.com/maps/dir/?api=1&destination=Bun+Bo+77+Bui+Vien,+Ho+Chi+Minh+City",
-  },
-};
+interface RatingItem {
+  id: string;
+  ratedBy: string;
+  createdAt: string;
+  raterType: string;
+  entrance: string;
+  walkwayDoorWidth: string;
+  accessibleRestroom: string;
+  tableSeating: string;
+  parking: string;
+  note: string | null;
+  profile: { displayName: string | null; role: string } | null;
+}
 
-const staticFeedback = [
-  { user: "Anonymous ✅", service: "Recommended", facility: "Okay", comment: "Good coffee, easy access" },
-  { user: "Anonymous", service: "Okay", facility: "Need Improvement", comment: "Staff were helpful but parking was tight" },
-  { user: "Anonymous", service: "Recommended", facility: "Okay", comment: "Nice ambiance, needs better signage" },
+const CHECKLIST_LABELS: { key: keyof VenueData; label: string; detailKey: keyof RatingItem }[] = [
+  { key: "entrancePct",  label: "Step-free entrance",    detailKey: "entrance"           },
+  { key: "walkwayPct",   label: "Walkway / door width",  detailKey: "walkwayDoorWidth"   },
+  { key: "restroomPct",  label: "Accessible restroom",   detailKey: "accessibleRestroom" },
+  { key: "seatingPct",   label: "Accessible seating",    detailKey: "tableSeating"       },
+  { key: "parkingPct",   label: "Accessible parking",    detailKey: "parking"            },
 ];
 
-export default function DetailModal({ locationKey, ratings, onClose }: Props) {
+function pctColor(pct: number) {
+  if (pct >= 75) return "var(--color-success)";
+  if (pct >= 45) return "#8a6a00";
+  return "var(--color-danger)";
+}
+
+function answerIcon(a: string) {
+  if (a === "yes")  return { icon: "✓", color: "#1a7a1a" };
+  if (a === "no")   return { icon: "✗", color: "#b00020" };
+  return                   { icon: "?", color: "#8a6a00" };
+}
+
+export default function DetailModal({ venue, onClose }: Props) {
   const titleRef = useRef<HTMLHeadingElement>(null);
-  const data = locationsData[locationKey];
+  const [ratings, setRatings]     = useState<RatingItem[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [editRating, setEditRating] = useState<RatingItem | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const loadRatings = () => {
+    fetch(`/api/ratings?venueId=${venue.id}`)
+      .then((r) => r.json())
+      .then((d) => { setRatings(d.ratings ?? []); setLoading(false); })
+      .catch(() => setLoading(false));
+  };
 
   useEffect(() => {
     titleRef.current?.focus({ preventScroll: true });
@@ -94,102 +65,193 @@ export default function DetailModal({ locationKey, ratings, onClose }: Props) {
     return () => { document.body.style.overflow = ""; };
   }, []);
 
+  useEffect(() => { loadRatings(); }, [venue.id]);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setCurrentUserId(user?.id ?? null);
+    });
+  }, []);
+
   useEffect(() => {
     const modal = document.getElementById("detail-modal");
     if (!modal) return;
-    const handleKey = (e: KeyboardEvent) => {
+    const trap = (e: KeyboardEvent) => {
       if (e.key === "Escape") { onClose(); return; }
       if (e.key !== "Tab") return;
-      const focusable = modal.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
+      const els = modal.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea, input, [tabindex]:not([tabindex="-1"])'
       );
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
+      const first = els[0]; const last = els[els.length - 1];
       if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
     };
-    modal.addEventListener("keydown", handleKey);
-    return () => modal.removeEventListener("keydown", handleKey);
+    modal.addEventListener("keydown", trap);
+    return () => modal.removeEventListener("keydown", trap);
   }, [onClose]);
 
-  if (!data) return null;
+  const handleDelete = async (id: string) => {
+    if (!confirm("Delete your rating? This cannot be undone.")) return;
+    setDeletingId(id);
+    const res = await fetch(`/api/ratings?id=${id}`, { method: "DELETE" });
+    setDeletingId(null);
+    if (res.ok) setRatings((prev) => prev.filter((r) => r.id !== id));
+  };
 
-  const clamp = (v: number) => Math.max(0, Math.min(100, v || 0));
+  const hasData = venue.totalRatings > 0;
 
   return (
-    <div
-      id="detail-modal"
-      className="modal modal--open"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="detail-title"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="modal__panel" role="document">
-        <h2 id="detail-title" className="modal__title" ref={titleRef} tabIndex={-1}>
-          {data.title}
-        </h2>
-        <p>{data.description}</p>
+    <>
+      <div
+        id="detail-modal"
+        className="modal modal--open"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="detail-title"
+        onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      >
+        <div className="modal__panel" role="document">
+          <h2 id="detail-title" className="modal__title" ref={titleRef} tabIndex={-1}>
+            {venue.title}
+          </h2>
+          <p className="helper">{venue.address}</p>
 
-        <h3>Accessibility by Disability</h3>
-        <div className="ratings-grid" aria-label="Accessibility ratings by disability">
-          {(["Blind", "Hearing", "Mobility"] as const).map((label) => {
-            const key = label.toLowerCase() as keyof Ratings;
-            const v = clamp(ratings[key]);
-            return (
-              <div key={label} className="rating-line" role="group" aria-label={`${label} ${v}%`}>
-                <span className="rating-label">{label}</span>
-                <span
-                  className="progress"
-                  role="progressbar"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={v}
-                  aria-label={`${v}% accessibility for ${label.toLowerCase()}`}
-                >
-                  <span className="progress__bar" style={{ width: `${v}%` }} />
-                </span>
-                <span className="rating-num">{v}</span>
-              </div>
-            );
-          })}
-        </div>
+          {/* Checklist summary */}
+          <h3>Accessibility Checklist</h3>
+          {hasData ? (
+            <div className="ratings-grid" aria-label="Accessibility checklist results">
+              {CHECKLIST_LABELS.map(({ key, label }) => {
+                const pct = venue[key] as number;
+                return (
+                  <div key={key} className="rating-line" role="group" aria-label={`${label}: ${pct}% yes`}>
+                    <span className="rating-label">{label}</span>
+                    <span
+                      className="progress"
+                      role="progressbar"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={pct}
+                    >
+                      <span className="progress__bar" style={{ width: `${pct}%`, background: pctColor(pct) }} />
+                    </span>
+                    <span className="rating-num" style={{ color: pctColor(pct), fontWeight: 700 }}>{pct}%</span>
+                  </div>
+                );
+              })}
+              <p className="helper" style={{ marginTop: 6 }}>
+                Based on {venue.totalRatings} rating{venue.totalRatings !== 1 ? "s" : ""}.
+                Percentage of raters who answered "Yes".
+              </p>
+            </div>
+          ) : (
+            <p style={{ color: "var(--color-text-muted)" }}>No ratings yet for this venue.</p>
+          )}
 
-        <h3>Special Services</h3>
-        <ul>
-          {data.services.map((s) => <li key={s}>{s}</li>)}
-        </ul>
+          {/* Individual ratings */}
+          <h3>
+            Community Ratings
+            {!loading && ratings.length > 0 && ` (${ratings.length})`}
+          </h3>
+          <div className="feedback-container">
+            {loading ? (
+              <p style={{ color: "var(--color-text-muted)" }}>Loading…</p>
+            ) : ratings.length === 0 ? (
+              <p style={{ color: "var(--color-text-muted)" }}>No ratings yet. Be the first!</p>
+            ) : (
+              <ul className="feedback-list">
+                {ratings.map((r) => {
+                  const name = r.profile?.displayName ?? "Anonymous";
+                  const isTeam = r.raterType === "team";
+                  const isOwn = currentUserId === r.ratedBy;
+                  return (
+                    <li key={r.id}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
+                        <strong>{name}</strong>
+                        {isTeam && (
+                          <span style={{ fontSize: "0.75rem", background: "var(--color-primary)", color: "#fff", borderRadius: 999, padding: "1px 7px", fontWeight: 700 }}>
+                            Team
+                          </span>
+                        )}
+                        {isOwn && (
+                          <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                            <button
+                              type="button"
+                              className="btn btn--ghost"
+                              style={{ fontSize: "0.75rem", padding: "2px 10px" }}
+                              onClick={() => setEditRating(r)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="btn"
+                              style={{ fontSize: "0.75rem", padding: "2px 10px", color: "var(--color-danger)", borderColor: "var(--color-danger)" }}
+                              disabled={deletingId === r.id}
+                              onClick={() => handleDelete(r.id)}
+                            >
+                              {deletingId === r.id ? "…" : "Delete"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: "0.85rem" }}>
+                        {CHECKLIST_LABELS.map(({ label, detailKey }) => {
+                          const val = r[detailKey] as string;
+                          const { icon, color } = answerIcon(val);
+                          return (
+                            <span key={detailKey} style={{ color }}>
+                              {icon} {label}
+                            </span>
+                          );
+                        })}
+                      </div>
+                      {r.note && (
+                        <p style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>
+                          &ldquo;{r.note}&rdquo;
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
 
-        <h3>Customer Feedback ({staticFeedback.length})</h3>
-        <div className="feedback-container">
-          <ul className="feedback-list">
-            {staticFeedback.map((fb, i) => (
-              <li key={i}>
-                <strong>{fb.user} (Service: {fb.service}, Facilities: {fb.facility})</strong>
-                &ldquo;{fb.comment}&rdquo;
-              </li>
-            ))}
-          </ul>
-          <div className="feedback-actions">
-            <button type="button" className="btn btn--primary" aria-label="Load more customer feedback">
-              Load More Feedback
-            </button>
+          <div className="actions">
+            <a
+              href={`https://www.google.com/maps/place/?q=place_id:${venue.googlePlaceId}`}
+              className="btn btn--primary"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Open ${venue.title} in Google Maps`}
+            >
+              Open in Google Maps
+            </a>
+            <button type="button" className="btn" onClick={onClose}>Close</button>
           </div>
         </div>
-
-        <div className="actions">
-          <a
-            href={data.mapUrl}
-            className="btn btn--primary"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Get directions on Google Maps"
-          >
-            Get Directions
-          </a>
-          <button type="button" className="btn" onClick={onClose}>Close</button>
-        </div>
       </div>
-    </div>
+
+      {editRating && (
+        <ReviewModal
+          venueId={venue.id}
+          place={venue.title}
+          onClose={() => setEditRating(null)}
+          onSaved={() => { setEditRating(null); setLoading(true); loadRatings(); }}
+          editRating={{
+            id:      editRating.id,
+            answers: {
+              entrance:           editRating.entrance,
+              walkwayDoorWidth:   editRating.walkwayDoorWidth,
+              accessibleRestroom: editRating.accessibleRestroom,
+              tableSeating:       editRating.tableSeating,
+              parking:            editRating.parking,
+            },
+            note: editRating.note ?? "",
+          }}
+        />
+      )}
+    </>
   );
 }
