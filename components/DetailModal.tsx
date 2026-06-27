@@ -238,13 +238,17 @@ export default function DetailModal({ venue, onClose, onRatingChanged }: Props) 
 
           <div className="actions">
             <a
-              href={`https://www.google.com/maps/place/?q=place_id:${venue.googlePlaceId}`}
+              href={
+                venue.lat && venue.lng
+                  ? `https://www.google.com/maps/dir/?api=1&destination=${venue.lat},${venue.lng}`
+                  : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venue.title + " " + venue.address)}`
+              }
               className="btn btn--primary"
               target="_blank"
               rel="noopener noreferrer"
-              aria-label={`Open ${venue.title} in Google Maps`}
+              aria-label={`Get directions to ${venue.title} in Google Maps`}
             >
-              Open in Google Maps
+              Get Directions
             </a>
             <button type="button" className="btn" onClick={onClose}>Close</button>
           </div>
