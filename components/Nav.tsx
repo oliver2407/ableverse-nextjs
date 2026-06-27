@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase-browser";
 import type { User } from "@supabase/supabase-js";
 
 export default function Nav() {
+  const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [contrast, setContrast] = useState(false);
   const [user, setUser]         = useState<User | null>(null);
@@ -101,7 +103,7 @@ export default function Nav() {
               <li className="nav__item">
                 <Link href="/account">My Account</Link>
               </li>
-              {isAdmin && (
+              {(isAdmin || pathname.startsWith("/admin")) && (
                 <li className="nav__item">
                   <Link href="/admin">Admin</Link>
                 </li>
